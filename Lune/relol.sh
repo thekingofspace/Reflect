@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rojo serve &
+rojo serve ../Plugin &
 lune run build
 
 wait
