@@ -72,21 +72,17 @@ function module.Begin_net()
     local url = `http://localhost:{port}`
 
     print(
-        colorize(colors.bright_magenta, "◆") ..
         " " ..
         colorize(colors.bold .. colors.white, "Server starting") ..
-        " " ..
-        colorize(colors.bright_magenta, "◆")
+        " " 
     )
     print(
-        colorize(colors.cyan, "  ➜") ..
         "  " ..
         colorize(colors.white, "Local:") ..
         "   " ..
         colorize(colors.bright_cyan, url)
     )
     print(
-        colorize(colors.cyan, "  ➜") ..
         "  " ..
         colorize(colors.white, "Port:") ..
         "    " ..
