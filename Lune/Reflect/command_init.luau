@@ -31,7 +31,7 @@ end
 
 local function footer()
     print(c("blue", string.rep("─", 36)))
-    print(c("green", "  ✔ ") .. s("bold", "relo init complete!"))
+    print(c("green", "  ✔ ") .. s("bold", "Reflect init complete!"))
     print(c("blue", string.rep("─", 36)))
 end
 
@@ -41,13 +41,13 @@ local common_files = {
         "src"
     },
     files = {
-        "relo.init.json",
+        "Reflect.init.json",
         "sourcemap.json"
     }
 }
 
 return function(args: { name: string })
-    header(`Initializing relo project: {args.name}`)
+    header(`Initializing Reflect project: {args.name}`)
 
     for _, item in ipairs(common_files.folders) do
         if not fs.isDir(`./{item}`) then
@@ -68,11 +68,11 @@ return function(args: { name: string })
         end
     end
 
-    local relo_path = "./relo.init.json"
-    local raw = fs.readFile(relo_path)
+    local Reflect_path = "./Reflect.init.json"
+    local raw = fs.readFile(Reflect_path)
     local existing: { [string]: any } = serde.decode("json", raw)
 
-    local relo_defaults = {
+    local Reflect_defaults = {
         project_name = args.name,
         default_port = 8088,
         heartbeat_interval = 1,
@@ -85,7 +85,7 @@ return function(args: { name: string })
     }
 
     local changed = false
-    for key, value in pairs(relo_defaults) do
+    for key, value in pairs(Reflect_defaults) do
         if existing[key] == nil then
             existing[key] = value
             info(`Added missing key  {s("bold", key)} = {tostring(value)}`)
@@ -96,10 +96,10 @@ return function(args: { name: string })
     end
 
     if changed then
-        fs.writeFile(relo_path, serde.encode("json", existing, true))
-        success("Saved updates to  " .. s("bold", "relo.init.json"))
+        fs.writeFile(Reflect_path, serde.encode("json", existing, true))
+        success("Saved updates to  " .. s("bold", "Reflect.init.json"))
     else
-        skip("No changes needed for  " .. s("bold", "relo.init.json"))
+        skip("No changes needed for  " .. s("bold", "Reflect.init.json"))
     end
 
     footer()
