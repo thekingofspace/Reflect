@@ -1,7 +1,11 @@
 local module = {}
+module.LastHeatbeat = 0
+module.Started = false
 local net = require("@lune/net")
 local serde = require("@lune/serde")
+local process = require("@lune/process")
 local project_info = require("./get_info")
+local task = require("@lune/task")
 
 local c = {
     reset   = "\27[0m",
@@ -35,6 +39,18 @@ local function log_request(method: string, path: string, status: number)
     )
 end
 
+local function BeginHeartbeat()
+    local timeout = project_info.heartbeat_interval
+
+    while true do
+        task.wait(0)
+        if os.time() - module.LastHeatbeat-1 > timeout then
+            print("  " .. paint(c.cyan, "Exit") .. "   " .. paint(c.white, "Heartbeat failed exiting"))
+            process.exit(1)
+        end
+    end
+end
+
 local actions = {
     ["GET"] = function(packet: net.ServeRequest)
         local true_path = packet.path:split("/")
@@ -42,6 +58,12 @@ local actions = {
 
         local endpack: any = nil
         if true_path[1] == "info" then
+            
+            if module.Started == false then
+                module.Started = true_path
+                module.LastHeatbeat = os.time()
+                task.spawn(BeginHeartbeat)
+            end
             endpack = {
                 status = 200,
                 body = serde.encode("json", project_info)
@@ -53,6 +75,10 @@ local actions = {
             log_request("GET", packet.path, status)
         end
         return endpack
+    end,
+
+    ["PATCH"] = function()
+        module.LastHeatbeat = os.time()
     end
 }
 
