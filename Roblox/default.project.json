@@ -2,13 +2,11 @@
   "name": "Roblox",
   "tree": {
     "$className": "DataModel",
-
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
       }
     },
-
     "Workspace": {
       "$properties": {
         "FilteringEnabled": true
