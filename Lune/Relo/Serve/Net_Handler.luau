@@ -62,7 +62,7 @@ local actions = {
         end
 
         local status = endpack and endpack.status or 404
-        if project_info.log_actions.connection == true_path then
+        if project_info.log_actions.connection == true then
             log_request("GET", packet.path, status)
         end
         return endpack
