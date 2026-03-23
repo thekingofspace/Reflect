@@ -1,132 +1,138 @@
 local module = {}
 local net = require("@lune/net")
 local serde = require("@lune/serde")
-local process = require("@lune/process")
-local project_info = require("./get_info")
 local task = require("@lune/task")
-local types = require("../types")
+local process = require("@lune/process")
+local stdio = require("@lune/stdio")
+local path_info = require("./get_info")
 
-module.LastHeatbeat = 0
-module.Started = false
-module.StagedData = {}::{types.staged<any>}
+module.Paths = {}
+module.Staged_Actions = {}
+module.Last_Heatbeat = os.time()
+module.Init_pack = false
+print("")
 
-local c = {
-    reset   = "\27[0m",
-    bold    = "\27[1m",
-    white   = "\27[37m",
-    yellow  = "\27[33m",
-    cyan    = "\27[96m",
-    magenta = "\27[95m",
-    red     = "\27[91m",
-    green   = "\27[92m",
-}
-
-local function paint(color: string, text: string): string
-    return color .. text .. c.reset
-end
-
-local function bold(color: string, text: string): string
-    return paint(c.bold .. color, text)
-end
-
-local function log_request(method: string, path: string, status: number)
-    local status_color = status >= 500 and c.red
-        or status >= 400 and c.yellow
-        or c.green
-
-    print(
-        bold(c.white, "[") .. paint(c.cyan, method) .. bold(c.white, "]") ..
-        " " .. paint(c.white, path) ..
-        " " .. bold(c.white, "→") ..
-        " " .. paint(status_color, tostring(status))
-    )
-end
-
-local function BeginHeartbeat()
-    local timeout = project_info.heartbeat_interval
-
-    while true do
-        task.wait(0)
-        if os.time() - module.LastHeatbeat-1 > timeout then
-            print("  " .. paint(c.cyan, "Exit") .. "   " .. paint(c.white, "Heartbeat failed exiting"))
-            process.exit(1)
-        end
+local function log_info(msg: string)
+    if path_info.log_actions.connection == true then
+        stdio.write(stdio.color("blue"))
+        stdio.write(stdio.style("bold"))
+        stdio.write("[INFO] ")
+        stdio.write(stdio.style("reset"))
+        stdio.write(stdio.color("reset"))
+        print(msg)
     end
 end
 
-local actions = {
-    ["GET"] = function(packet: net.ServeRequest)
-        local true_path = packet.path:split("/")
-        table.remove(true_path, 1)
-
-        local endpack: any = nil
-        if true_path[1] == "info" then
-            
-            if module.Started == false then
-                module.Started = true_path
-                module.LastHeatbeat = os.time()
-                task.spawn(BeginHeartbeat)
-            end
-            endpack = {
-                status = 200,
-                body = serde.encode("json", project_info)
-            } :: net.ServeResponse
-        end
-
-        local status = endpack and endpack.status or 404
-        if project_info.log_actions.connection == true then
-            log_request("GET", packet.path, status)
-        end
-        return endpack
-    end,
-
-    ["PATCH"] = function(packet: net.ServeRequest)
-        local cache = {}
-        if #module.StagedData > 0 then
-            for _ = 1,25 do
-                table.insert(cache, table.remove(module.StagedData, 1))
-                if #module.StagedData == 0 then
-                    break
-                end
-            end
-        end
-        module.LastHeatbeat = os.time()
-        if project_info.log_actions.connection == true then
-            log_request("PATCH", "heartbeat", 200)
-        end
-        return {
-            status = 200,
-            body = serde.encode("json", cache)
-        }
+local function log_success(msg: string)
+    if path_info.log_actions.connection == true then
+        stdio.write(stdio.color("green"))
+        stdio.write(stdio.style("bold"))
+        stdio.write("[OK]   ")
+        stdio.write(stdio.style("reset"))
+        stdio.write(stdio.color("reset"))
+        print(msg)
     end
-}
+end
 
-function module.StageData(op:number, data:any)
-    table.insert(module.StagedData, {op = op, d = data})
+local function log_warn(msg: string)
+    if path_info.log_actions.warn == true then
+        stdio.write(stdio.color("yellow"))
+        stdio.write(stdio.style("bold"))
+        stdio.write("[WARN] ")
+        stdio.write(stdio.style("reset"))
+        stdio.write(stdio.color("reset"))
+        print(msg)
+    end
+end
+
+local function log_error(msg: string)
+    if path_info.log_actions.error == true then
+        stdio.write(stdio.color("red"))
+        stdio.write(stdio.style("bold"))
+        stdio.write("[ERR]  ")
+        stdio.write(stdio.style("reset"))
+        stdio.write(stdio.color("reset"))
+        print(msg)
+    end
+end
+
+------------------------------------- Core functions
+
+function module.RegisterPath(method: net.HttpMethod, callback: (packet: net.ServeRequest) -> net.ServeResponse)
+    module.Paths[method] = callback
+    return module
 end
 
 function module.Begin_net()
-    local port = project_info.default_port
-    local url = `http://localhost:{port}`
-
-    if project_info.two_way_scripting == true then
-        print(" " .. paint(c.yellow, "WARNING:") .. "  -  " .. paint(c.white, "You have two_way_scripting turned on, this can result in unintended behaviour"))
+    if not path_info.project_name then
+        log_error("Cannot start server: project_name is missing from path_info")
+        return
     end
 
-    print(" " .. bold(c.white, "Server starting"))
-    print("  " .. paint(c.white, "Local:") .. "   " .. paint(c.cyan, url))
-    print("  " .. paint(c.white, "Port:") .. "    " .. paint(c.yellow, tostring(port)))
-    print(paint(c.magenta, ("─"):rep(36)))
+    local port = path_info.default_port or 8088
+    log_info("Starting server for project: " .. tostring(path_info.project_name))
+    log_info("Listening on port: " .. tostring(port))
+    if path_info.two_way_scripting == true then
+        log_warn("two_way_scripting is enabled this can cause unintended behaviour.")
+    end
 
     net.serve(port, function(packet: net.ServeRequest)
-        local handler = actions[packet.method]
-        if handler then
-            return handler(packet)
+        if module.Paths[packet.method] then
+            local response = module.Paths[packet.method](packet)
+            return response
         else
-            log_request(packet.method, packet.path, 405)
+            log_warn("No handler for method: " .. packet.method .. " — responding 405")
             return { status = 405 }
         end
     end)
 end
 
+------------------------------------- Setup callbacks
+
+module
+    .RegisterPath("PATCH", function(packet)
+        module.Last_Heatbeat = os.time()
+
+        if module.Init_pack then
+            local res_pack = {}
+
+            if #module.Staged_Actions > 0 then
+                local batch_size = math.min(25, #module.Staged_Actions)
+                for _ = 1, batch_size do
+                    table.insert(res_pack, table.remove(module.Staged_Actions, 1))
+                    if #module.Staged_Actions == 0 then break end
+                end
+                log_info("Flushed " .. tostring(#res_pack) .. " staged action(s) — " .. tostring(#module.Staged_Actions) .. " remaining")
+            else
+                log_info("Heartbeat received — no staged actions to flush")
+            end
+
+            return {
+                status = 202,
+                body = serde.encode("json", res_pack)
+            }
+        else
+            log_success("Initial handshake received — sending path_info to client")
+
+            task.spawn(function()
+                log_info("Heartbeat watchdog started (interval: " .. tostring(path_info.heartbeat_interval) .. "s)")
+                while true do
+                    task.wait(1)
+                    local elapsed = os.time() - module.Last_Heatbeat
+                    if elapsed > path_info.heartbeat_interval + 1 then
+                        log_error("Heartbeat timeout — no ping for " .. tostring(elapsed) .. "s. Shutting down.")
+                        process.exit()
+                    end
+                end
+            end)
+
+            module.Init_pack = true
+            return {
+                status = 200,
+                body = serde.encode("json", path_info)
+            }
+        end
+    end)
+
+------------------------------------- Return out
 return module
